@@ -26,6 +26,7 @@ fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                 KeyCode::Char('q') => break Ok(()),
                 KeyCode::Up => app.previous(),
                 KeyCode::Down => app.next(),
+                KeyCode::Char(' ') => app.play(),
                 _ => {}
             }
         }

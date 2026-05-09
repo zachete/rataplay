@@ -3,22 +3,35 @@ use ratatui::{
     style::Color,
     widgets::{List, ListState},
 };
+use rodio::{Decoder, MixerDeviceSink, Player};
 use std::{
-    fs::{self},
+    fs::{self, File},
+    io::BufReader,
     path::PathBuf,
 };
-use tracing;
 
 pub struct App {
     state: ListState,
     tracks: Vec<PathBuf>,
+    #[allow(dead_code)]
+    // sink must be preserved on entire app lifecycle
+    sink: MixerDeviceSink,
+    prev_selected: Option<usize>,
+    player: Player,
 }
 
 impl App {
     pub fn new() -> Self {
+        let sink =
+            rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
+        let player = Player::connect_new(sink.mixer());
+
         let mut app = Self {
             state: ListState::default().with_selected(Some(0)),
             tracks: Vec::new(),
+            sink,
+            player,
+            prev_selected: None,
         };
 
         app.read_music();
@@ -49,7 +62,6 @@ impl App {
 
     pub fn read_music(&mut self) {
         let dir = fs::read_dir("./music");
-        tracing::info!("{:?}", std::env::current_dir());
         if dir.is_ok() {
             for entry in dir.unwrap() {
                 if entry.is_ok() {
@@ -59,5 +71,40 @@ impl App {
                 }
             }
         }
+    }
+
+    pub fn play(&mut self) {
+        let selected = self.state.selected().unwrap();
+
+        match self.prev_selected {
+            Some(val) => {
+                if selected != val {
+                    self.play_selected_file(selected);
+                } else {
+                    if self.player.is_paused() {
+                        self.player.play();
+                    } else {
+                        self.player.pause();
+                    }
+                }
+            }
+            None => {
+                self.play_selected_file(selected);
+            }
+        }
+
+        self.prev_selected = Some(selected);
+    }
+
+    fn play_selected_file(&mut self, index: usize) {
+        if !self.player.empty() {
+            self.player.clear();
+        }
+
+        let file_path_buf = self.tracks.get(index).expect("track not found");
+        let file = BufReader::new(File::open(file_path_buf.as_path()).unwrap());
+        let source = Decoder::try_from(file).unwrap();
+        self.player.append(source);
+        self.player.play();
     }
 }
