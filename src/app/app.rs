@@ -1,19 +1,12 @@
 use crate::app::audio_player::AudioPlayer;
+use crate::app::library::Library;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::Color,
     widgets::{Block, List, ListState},
 };
-use std::{
-    fs::{self, DirEntry},
-    path::PathBuf,
-};
-
-struct Album {
-    name: String,
-    tracks: Vec<PathBuf>,
-}
+use std::path::PathBuf;
 
 struct State {
     current_track: Option<PathBuf>,
@@ -24,8 +17,8 @@ struct State {
 pub struct App {
     audio_player: AudioPlayer,
     state: State,
+    library: Library,
     prev_selected: Option<usize>,
-    library: Vec<Album>,
     tracks_selected: bool,
 }
 
@@ -37,16 +30,16 @@ impl App {
             albums_list_state: ListState::default().with_selected(Some(0)),
             track_list_state: ListState::default().with_selected(Some(0)),
         };
+        let mut library = Library::new();
+        library.load();
 
-        let mut app = Self {
+        let app = Self {
             audio_player,
             state,
-            library: Vec::new(),
+            library,
             prev_selected: None,
             tracks_selected: false,
         };
-
-        app.read_music();
 
         app
     }
@@ -74,14 +67,10 @@ impl App {
     }
 
     fn set_current_track(&mut self) {
-        let current_album = self
-            .library
-            .get(self.state.albums_list_state.selected().unwrap())
-            .expect("album not found");
-        let track = current_album
-            .tracks
-            .get(self.state.track_list_state.selected().unwrap())
-            .expect("track not found");
+        let track = self.library.get_track(
+            self.state.albums_list_state.selected().unwrap(),
+            self.state.track_list_state.selected().unwrap(),
+        );
         self.state.current_track = Some(track.clone());
     }
 
@@ -91,44 +80,6 @@ impl App {
 
     pub fn focus_tracks(&mut self) {
         self.tracks_selected = true
-    }
-
-    pub fn read_music(&mut self) {
-        let maybe_dir = fs::read_dir("./music");
-        if let Ok(dir) = maybe_dir {
-            for maybe_entry in dir {
-                if let Ok(entry) = maybe_entry
-                    && let Ok(metadata) = entry.metadata()
-                {
-                    if metadata.is_dir() {
-                        let album = self.read_dir(entry);
-                        self.library.push(album);
-                    }
-                }
-            }
-        }
-    }
-
-    fn read_dir(&mut self, dir_entry: DirEntry) -> Album {
-        let dir = fs::read_dir(dir_entry.path()).unwrap();
-        let dir_path = dir_entry.path();
-
-        let mut album = Album {
-            name: dir_path.file_name().unwrap().to_str().unwrap().to_string(),
-            tracks: Vec::new(),
-        };
-
-        for maybe_entry in dir {
-            if let Ok(entry) = maybe_entry
-                && let Ok(metadata) = entry.metadata()
-            {
-                if metadata.is_file() {
-                    album.tracks.push(entry.path());
-                }
-            }
-        }
-
-        album
     }
 
     pub fn play(&mut self) {
@@ -171,7 +122,12 @@ impl App {
             Color::White
         };
         let block = Block::bordered().border_style(style).title("Albums");
-        let items: Vec<String> = self.library.iter().map(|item| item.name.clone()).collect();
+        let items: Vec<String> = self
+            .library
+            .get_albums()
+            .iter()
+            .map(|item| item.name.clone())
+            .collect();
         let list = List::new(items).highlight_symbol(">").block(block);
 
         frame.render_stateful_widget(list, area, &mut self.state.albums_list_state);
@@ -184,13 +140,9 @@ impl App {
             Color::White
         };
         let block = Block::bordered().border_style(style).title("Tracks");
-        let selected = self.state.albums_list_state.selected().unwrap();
-        let album = self
-            .library
-            .get(selected)
-            .expect("selected album not found");
-        let items: Vec<&str> = album
-            .tracks
+        let selected_album = self.state.albums_list_state.selected().unwrap();
+        let tracks = self.library.get_tracks(selected_album);
+        let items: Vec<&str> = tracks
             .iter()
             .map(|item| item.file_name().unwrap().to_str().unwrap())
             .collect();
