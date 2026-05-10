@@ -1,7 +1,8 @@
 use ratatui::{
     Frame,
+    layout::{Constraint, Layout, Rect},
     style::Color,
-    widgets::{List, ListState},
+    widgets::{Block, List, ListState},
 };
 use rodio::{Decoder, MixerDeviceSink, Player};
 use std::{
@@ -37,19 +38,6 @@ impl App {
         app.read_music();
 
         app
-    }
-
-    pub fn render(&mut self, frame: &mut Frame) {
-        let items: Vec<&str> = self
-            .tracks
-            .iter()
-            .map(|item| item.file_name().unwrap().to_str().unwrap())
-            .collect();
-        let list = List::new(items)
-            .style(Color::LightBlue)
-            .highlight_symbol(">");
-
-        frame.render_stateful_widget(list, frame.area(), &mut self.state);
     }
 
     pub fn previous(&mut self) {
@@ -106,5 +94,36 @@ impl App {
         let source = Decoder::try_from(file).unwrap();
         self.player.append(source);
         self.player.play();
+    }
+
+    pub fn render(&mut self, frame: &mut Frame) {
+        let layout =
+            Layout::horizontal([Constraint::Length(30), Constraint::Length(30)]).spacing(1);
+
+        let [dirs, files] = frame.area().layout(&layout);
+        self.render_dirs(frame, dirs);
+        self.render_files(frame, files);
+    }
+
+    pub fn render_dirs(&mut self, frame: &mut Frame, area: Rect) {
+        let block = Block::bordered().title("Albums");
+
+        let items: Vec<&str> = self
+            .tracks
+            .iter()
+            .map(|item| item.file_name().unwrap().to_str().unwrap())
+            .collect();
+        let list = List::new(items)
+            .style(Color::LightBlue)
+            .highlight_symbol(">")
+            .block(block);
+
+        frame.render_stateful_widget(list, area, &mut self.state);
+    }
+
+    fn render_files(&mut self, frame: &mut Frame, area: Rect) {
+        let block = Block::bordered().title("Tracks");
+
+        frame.render_widget(block, area);
     }
 }
