@@ -1,10 +1,9 @@
 mod app;
 
-use std::fs::File;
-
 use app::App;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::DefaultTerminal;
+use std::fs::File;
 use tracing_subscriber::fmt;
 
 fn main() -> color_eyre::Result<()> {

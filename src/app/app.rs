@@ -1,13 +1,12 @@
+use crate::app::audio_player::AudioPlayer;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::Color,
     widgets::{Block, List, ListState},
 };
-use rodio::{Decoder, MixerDeviceSink, Player};
 use std::{
-    fs::{self, DirEntry, File},
-    io::BufReader,
+    fs::{self, DirEntry},
     path::PathBuf,
 };
 
@@ -23,11 +22,8 @@ struct State {
 }
 
 pub struct App {
+    audio_player: AudioPlayer,
     state: State,
-    #[allow(dead_code)]
-    // sink must be preserved on entire App lifecycle to play audio
-    sink: MixerDeviceSink,
-    player: Player,
     prev_selected: Option<usize>,
     library: Vec<Album>,
     tracks_selected: bool,
@@ -35,9 +31,7 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let sink =
-            rodio::DeviceSinkBuilder::open_default_sink().expect("open default audio stream");
-        let player = Player::connect_new(sink.mixer());
+        let audio_player = AudioPlayer::new();
         let state = State {
             current_track: None,
             albums_list_state: ListState::default().with_selected(Some(0)),
@@ -45,9 +39,8 @@ impl App {
         };
 
         let mut app = Self {
+            audio_player,
             state,
-            sink,
-            player,
             library: Vec::new(),
             prev_selected: None,
             tracks_selected: false,
@@ -144,35 +137,22 @@ impl App {
         match self.prev_selected {
             Some(val) => {
                 if selected != val {
-                    self.play_selected_file(selected);
+                    self.play_selected_file();
                 } else {
-                    if self.player.is_paused() {
-                        self.player.play();
-                    } else {
-                        self.player.pause();
-                    }
+                    self.audio_player.play();
                 }
             }
             None => {
-                self.play_selected_file(selected);
+                self.play_selected_file();
             }
         }
 
         self.prev_selected = Some(selected);
     }
 
-    fn play_selected_file(&mut self, index: usize) {
-        if !self.player.empty() {
-            self.player.clear();
-        }
-
-        tracing::info!("play track: {}", index);
-
+    fn play_selected_file(&mut self) {
         let file_path_buf = self.state.current_track.as_ref().unwrap();
-        let file = BufReader::new(File::open(file_path_buf.as_path()).unwrap());
-        let source = Decoder::try_from(file).unwrap();
-        self.player.append(source);
-        self.player.play();
+        self.audio_player.set_current_track(file_path_buf);
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
