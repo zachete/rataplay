@@ -126,7 +126,7 @@ impl App {
             .library
             .get_albums()
             .iter()
-            .map(|item| item.name.clone())
+            .map(|item| item.borrow().title.clone())
             .collect();
         let list = List::new(items).highlight_symbol(">").block(block);
 

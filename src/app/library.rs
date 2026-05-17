@@ -1,7 +1,12 @@
 use std::{
+    cell::RefCell,
+    collections::HashMap,
     fs::{self, DirEntry},
     path::PathBuf,
+    rc::Rc,
 };
+
+use lofty::{file::TaggedFileExt, read_from_path, tag::Accessor};
 
 pub struct Album {
     pub name: String,
@@ -10,11 +15,46 @@ pub struct Album {
 
 pub struct Library {
     albums: Vec<Album>,
+    library: ModernLibrary,
+    default_artist: Rc<RefCell<Artist>>,
+}
+
+pub struct Artist {
+    name: String,
+    // albums: Box<Vec<ModernAlbum>>,
+}
+
+pub struct Song {
+    title: String,
+    path: PathBuf,
+}
+
+pub struct ModernAlbum {
+    pub title: String,
+    artist_ref: Rc<RefCell<Artist>>,
+    // songs: Vec<Song>
+}
+
+pub struct ModernLibrary {
+    pub artists: HashMap<String, Rc<RefCell<Artist>>>,
+    pub albums: Vec<Rc<RefCell<ModernAlbum>>>,
 }
 
 impl Library {
     pub fn new() -> Self {
-        Self { albums: Vec::new() }
+        let library = ModernLibrary {
+            artists: HashMap::new(),
+            albums: Vec::new(),
+        };
+        let default_artist = Rc::new(RefCell::new(Artist {
+            name: String::from("Other"),
+        }));
+
+        Self {
+            albums: Vec::new(),
+            library,
+            default_artist,
+        }
     }
 
     pub fn load(&mut self) {
@@ -33,8 +73,8 @@ impl Library {
         }
     }
 
-    pub fn get_albums(&self) -> &Vec<Album> {
-        &self.albums
+    pub fn get_albums(&self) -> &Vec<Rc<RefCell<ModernAlbum>>> {
+        &self.library.albums
     }
 
     pub fn get_tracks(&self, album_index: usize) -> &Vec<PathBuf> {
@@ -68,8 +108,46 @@ impl Library {
             if let Ok(entry) = maybe_entry
                 && let Ok(metadata) = entry.metadata()
             {
-                if metadata.is_file() {
+                let is_audio = match entry.path().extension() {
+                    Some(val) => val == "mp3",
+                    None => false,
+                };
+
+                if metadata.is_file() && is_audio {
+                    let tagged_track =
+                        read_from_path(entry.path()).expect("can't get tagget audio file");
+
+                    if let Some(tag) = tagged_track.primary_tag() {
+                        let artist = tag.artist().unwrap().to_string();
+                        let album = tag.album().unwrap().to_string();
+                        let track = tag.track().unwrap().to_string();
+
+                        let artist_ref = if !self.library.artists.contains_key(&artist) {
+                            let artist_ref = Rc::new(RefCell::new(Artist {
+                                name: artist.clone(),
+                            }));
+                            self.library.artists.insert(artist, artist_ref.clone());
+                            artist_ref.clone()
+                        } else {
+                            self.default_artist.clone()
+                        };
+
+                        if self
+                            .library
+                            .albums
+                            .iter()
+                            .find(|item| item.borrow().title == album)
+                            .is_none()
+                        {
+                            self.library.albums.push(Rc::new(RefCell::new(ModernAlbum {
+                                title: album,
+                                artist_ref: artist_ref,
+                            })));
+                        }
+                    }
+
                     album.tracks.push(entry.path());
+                } else if metadata.is_dir() {
                 }
             }
         }
