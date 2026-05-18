@@ -20,9 +20,9 @@ pub struct Library {
     default_artist: Rc<RefCell<Artist>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Artist {
-    name: String,
+    pub name: String,
     // albums: Box<Vec<ModernAlbum>>,
 }
 
@@ -36,7 +36,7 @@ pub struct Song {
 #[derive(Debug)]
 pub struct ModernAlbum {
     pub title: String,
-    artist_ref: Rc<RefCell<Artist>>,
+    pub artist_ref: Rc<RefCell<Artist>>,
     pub songs: Vec<Song>,
 }
 
@@ -80,6 +80,10 @@ impl Library {
         }
     }
 
+    pub fn get_artists(&self) -> &HashMap<String, Rc<RefCell<Artist>>> {
+        &self.library.artists
+    }
+
     pub fn get_albums(&self) -> &Vec<Rc<RefCell<ModernAlbum>>> {
         &self.library.albums
     }
@@ -90,13 +94,17 @@ impl Library {
         album_ref.songs.clone()
     }
 
-    pub fn get_song(&self, album_index: usize, song_index: usize) -> Song {
-        let album_rc = self
-            .library
-            .albums
-            .get(album_index)
-            .expect("album not found");
-        let album_ref = album_rc.borrow();
+    pub fn get_song(&self, artist: String, album_index: usize, song_index: usize) -> Song {
+        let mut target_albums = self.library.albums.iter().filter(|item| {
+            let album = item.borrow();
+            let artist_ref = album.artist_ref.borrow();
+            artist_ref.name == artist
+        });
+
+        tracing::info!("Album index: {}", album_index);
+        tracing::info!("Target albums: {:?}", target_albums);
+        let target_album = target_albums.nth(album_index).expect("album not found");
+        let album_ref = target_album.borrow();
         album_ref
             .songs
             .get(song_index)

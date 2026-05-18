@@ -25,8 +25,8 @@ fn run(terminal: &mut DefaultTerminal) -> std::io::Result<()> {
                 KeyCode::Char('q') => break Ok(()),
                 KeyCode::Up => app.previous(),
                 KeyCode::Down => app.next(),
-                KeyCode::Left => app.focus_albums(),
-                KeyCode::Right => app.focus_tracks(),
+                KeyCode::Left => app.switch_layout_to_left(),
+                KeyCode::Right => app.switch_layout_to_right(),
                 KeyCode::Char(' ') => app.play(),
                 _ => {}
             }
