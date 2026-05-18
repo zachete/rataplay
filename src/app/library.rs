@@ -1,4 +1,5 @@
 use std::{
+    borrow,
     cell::RefCell,
     collections::HashMap,
     fs::{self, DirEntry},
@@ -19,25 +20,30 @@ pub struct Library {
     default_artist: Rc<RefCell<Artist>>,
 }
 
+#[derive(Debug)]
 pub struct Artist {
     name: String,
     // albums: Box<Vec<ModernAlbum>>,
 }
 
+#[derive(Clone, Debug)]
 pub struct Song {
-    title: String,
-    path: PathBuf,
+    pub title: String,
+    pub path: PathBuf,
+    // album_ref: Rc<RefCell<ModernAlbum>>,
 }
 
+#[derive(Debug)]
 pub struct ModernAlbum {
     pub title: String,
     artist_ref: Rc<RefCell<Artist>>,
-    // songs: Vec<Song>
+    pub songs: Vec<Song>,
 }
 
 pub struct ModernLibrary {
     pub artists: HashMap<String, Rc<RefCell<Artist>>>,
     pub albums: Vec<Rc<RefCell<ModernAlbum>>>,
+    pub songs: Vec<Rc<RefCell<Song>>>,
 }
 
 impl Library {
@@ -45,6 +51,7 @@ impl Library {
         let library = ModernLibrary {
             artists: HashMap::new(),
             albums: Vec::new(),
+            songs: Vec::new(),
         };
         let default_artist = Rc::new(RefCell::new(Artist {
             name: String::from("Other"),
@@ -77,22 +84,24 @@ impl Library {
         &self.library.albums
     }
 
-    pub fn get_tracks(&self, album_index: usize) -> &Vec<PathBuf> {
-        &self
-            .albums
-            .get(album_index)
-            .expect("album not found")
-            .tracks
+    pub fn get_songs(&self, album_index: usize) -> Vec<Song> {
+        let album_rc = self.library.albums.get(album_index).unwrap();
+        let album_ref = album_rc.borrow();
+        album_ref.songs.clone()
     }
 
-    pub fn get_track(&self, album_index: usize, track_index: usize) -> &PathBuf {
-        let current_album = self.albums.get(album_index).expect("album not found");
-        let track = current_album
-            .tracks
-            .get(track_index)
-            .expect("track not found");
-
-        track
+    pub fn get_song(&self, album_index: usize, song_index: usize) -> Song {
+        let album_rc = self
+            .library
+            .albums
+            .get(album_index)
+            .expect("album not found");
+        let album_ref = album_rc.borrow();
+        album_ref
+            .songs
+            .get(song_index)
+            .expect("song not found")
+            .clone()
     }
 
     fn read_dir(&mut self, dir_entry: DirEntry) -> Album {
@@ -120,7 +129,7 @@ impl Library {
                     if let Some(tag) = tagged_track.primary_tag() {
                         let artist = tag.artist().unwrap().to_string();
                         let album = tag.album().unwrap().to_string();
-                        let track = tag.track().unwrap().to_string();
+                        let track = tag.title().unwrap().to_string();
 
                         let artist_ref = if !self.library.artists.contains_key(&artist) {
                             let artist_ref = Rc::new(RefCell::new(Artist {
@@ -132,17 +141,31 @@ impl Library {
                             self.default_artist.clone()
                         };
 
-                        if self
+                        match self
                             .library
                             .albums
                             .iter()
-                            .find(|item| item.borrow().title == album)
-                            .is_none()
+                            .position(|item| item.borrow().title == album)
                         {
-                            self.library.albums.push(Rc::new(RefCell::new(ModernAlbum {
-                                title: album,
-                                artist_ref: artist_ref,
-                            })));
+                            Some(index) => {
+                                self.library
+                                    .albums
+                                    .get(index)
+                                    .unwrap()
+                                    .borrow_mut()
+                                    .songs
+                                    .push(Song {
+                                        title: track,
+                                        path: entry.path(),
+                                    });
+                            }
+                            None => {
+                                self.library.albums.push(Rc::new(RefCell::new(ModernAlbum {
+                                    title: album,
+                                    artist_ref: artist_ref,
+                                    songs: Vec::new(),
+                                })));
+                            }
                         }
                     }
 

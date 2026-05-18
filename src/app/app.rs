@@ -1,15 +1,16 @@
-use crate::app::audio_player::AudioPlayer;
-use crate::app::library::Library;
+use crate::app::library::{Library, ModernAlbum};
+use crate::app::{audio_player::AudioPlayer, library::Song};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
     style::Color,
     widgets::{Block, List, ListState},
 };
-use std::path::PathBuf;
 
 struct State {
-    current_track: Option<PathBuf>,
+    selected_track: Option<Song>,
+    albums_list: Vec<ModernAlbum>,
+    songs_list: Vec<Song>,
     albums_list_state: ListState,
     track_list_state: ListState,
 }
@@ -26,9 +27,11 @@ impl App {
     pub fn new() -> Self {
         let audio_player = AudioPlayer::new();
         let state = State {
-            current_track: None,
+            selected_track: None,
             albums_list_state: ListState::default().with_selected(Some(0)),
             track_list_state: ListState::default().with_selected(Some(0)),
+            songs_list: Vec::new(),
+            albums_list: Vec::new(),
         };
         let mut library = Library::new();
         library.load();
@@ -52,26 +55,28 @@ impl App {
             self.state.track_list_state.select_first();
         }
 
-        self.set_current_track();
+        self.set_selected_track();
     }
 
     pub fn next(&mut self) {
         if self.tracks_selected {
-            self.state.track_list_state.select_next();
+            let selected_track_index = self.state.track_list_state.selected().unwrap();
+            if selected_track_index < self.state.songs_list.len() - 1 {
+                self.state.track_list_state.select_next();
+            }
         } else {
             self.state.albums_list_state.select_next();
             self.state.track_list_state.select_first();
         }
 
-        self.set_current_track();
+        self.set_selected_track();
     }
 
-    fn set_current_track(&mut self) {
-        let track = self.library.get_track(
-            self.state.albums_list_state.selected().unwrap(),
-            self.state.track_list_state.selected().unwrap(),
-        );
-        self.state.current_track = Some(track.clone());
+    fn set_selected_track(&mut self) {
+        let album_index = self.state.albums_list_state.selected().unwrap();
+        let song_index = self.state.track_list_state.selected().unwrap();
+        let track = self.library.get_song(album_index, song_index);
+        self.state.selected_track = Some(track);
     }
 
     pub fn focus_albums(&mut self) {
@@ -102,8 +107,8 @@ impl App {
     }
 
     fn play_selected_file(&mut self) {
-        let file_path_buf = self.state.current_track.as_ref().unwrap();
-        self.audio_player.set_current_track(file_path_buf);
+        let song = self.state.selected_track.as_ref().unwrap();
+        self.audio_player.set_current_track(&song.path);
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -112,7 +117,7 @@ impl App {
 
         let [dirs, files] = frame.area().layout(&layout);
         self.render_albums(frame, dirs);
-        self.render_tracks(frame, files);
+        self.render_songs(frame, files);
     }
 
     pub fn render_albums(&mut self, frame: &mut Frame, area: Rect) {
@@ -133,7 +138,7 @@ impl App {
         frame.render_stateful_widget(list, area, &mut self.state.albums_list_state);
     }
 
-    fn render_tracks(&mut self, frame: &mut Frame, area: Rect) {
+    fn render_songs(&mut self, frame: &mut Frame, area: Rect) {
         let style = if !self.tracks_selected {
             Color::LightBlue
         } else {
@@ -141,11 +146,14 @@ impl App {
         };
         let block = Block::bordered().border_style(style).title("Tracks");
         let selected_album = self.state.albums_list_state.selected().unwrap();
-        let tracks = self.library.get_tracks(selected_album);
-        let items: Vec<&str> = tracks
+        self.state.songs_list = self.library.get_songs(selected_album);
+        let items: Vec<&str> = self
+            .state
+            .songs_list
             .iter()
-            .map(|item| item.file_name().unwrap().to_str().unwrap())
+            .map(|item| item.title.as_str())
             .collect();
+        tracing::info!("items: {:?}", items);
         let list = List::new(items).highlight_symbol(">").block(block);
 
         frame.render_stateful_widget(list, area, &mut self.state.track_list_state);
